@@ -121,7 +121,12 @@
         $sort_nama = isset($_GET['sort_nama']) ? $_GET['sort_nama'] : '';
         $sort_nim = isset($_GET['sort_nim']) ? $_GET['sort_nim'] : '';
         $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
-        $limit = 10;
+        //pilihan jumlah record per halaman (whitelist), default 10
+        $limit_options = [5, 10, 15];
+        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
+        if (!in_array($limit, $limit_options, true)) {
+          $limit = 10;
+        }
 
         //kondisi filter predikat dan search nama
         $where = " WHERE 1=1";
@@ -165,10 +170,15 @@
 
         $result = mysqli_query($conn, $sql);
 
-        //parameter URL tanpa page untuk link pagination
         $params = $_GET;
         unset($params['page']);
+        $params['limit'] = $limit; 
         $query = http_build_query($params);
+
+        //helper: buat URL ke halaman tertentu dengan semua parameter lain tetap terjaga
+        function pageUrl($params, $p) {
+          return '?' . http_build_query(array_merge($params, ['page' => $p]));
+        }
         ?>
       <!--end::Connection-->
       <!--begin::App Main-->
@@ -408,23 +418,65 @@
                   </div>
                   <!--end::Card Body-->
                   <!--begin::Card Footer-->
-                  <div class="card-footer clearfix">
-                    <div class="float-start pt-1 fs-7 text-body-secondary">
-                      Menampilkan <?php echo $dari; ?> sampai <?php echo $sampai; ?> dari <?php echo $total_data; ?> data
+                  <div class="card-footer">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                      <!-- Dropdown jumlah record per halaman + info data -->
+                      <div class="d-flex flex-wrap align-items-center gap-2 fs-7 text-body-secondary">
+                        <label for="limit-select" class="mb-0">Tampilkan</label>
+                        <select
+                          id="limit-select"
+                          class="form-select form-select-sm w-auto"
+                          aria-label="Jumlah data per halaman"
+                        >
+                          <?php foreach ($limit_options as $opt) { ?>
+                          <option value="<?php echo $opt; ?>" <?php if ($limit == $opt) echo 'selected'; ?>><?php echo $opt; ?></option>
+                          <?php } ?>
+                        </select>
+                        <span>data per halaman</span>
+                        <span class="ms-md-2">
+                          | Menampilkan <?php echo $dari; ?> sampai <?php echo $sampai; ?> dari <?php echo $total_data; ?> data
+                        </span>
+                      </div>
+
+                      <!-- Tombol navigasi -->
+                      <ul class="pagination pagination-sm m-0">
+                        <!-- First Page -->
+                        <li class="page-item <?php if ($page <= 1) echo 'disabled'; ?>">
+                          <a class="page-link" href="<?php echo pageUrl($params, 1); ?>" aria-label="Halaman Pertama">
+                            <i class="bi bi-chevron-double-left" aria-hidden="true"></i> First
+                          </a>
+                        </li>
+                        <!-- Previous -->
+                        <li class="page-item <?php if ($page <= 1) echo 'disabled'; ?>">
+                          <a class="page-link" href="<?php echo pageUrl($params, max(1, $page - 1)); ?>" aria-label="Sebelumnya">
+                            <i class="bi bi-chevron-left" aria-hidden="true"></i> Previous
+                          </a>
+                        </li>
+
+                        <!-- nomor halaman -->
+                        <?php
+                        $start = max(1, $page - 2);
+                        $end   = min($total_page, $page + 2);
+                        for ($i = $start; $i <= $end; $i++) { ?>
+                        <li class="page-item <?php if ($i == $page) echo 'active'; ?>">
+                          <a class="page-link" href="<?php echo pageUrl($params, $i); ?>"><?php echo $i; ?></a>
+                        </li>
+                        <?php } ?>
+
+                        <!-- Next -->
+                        <li class="page-item <?php if ($page >= $total_page) echo 'disabled'; ?>">
+                          <a class="page-link" href="<?php echo pageUrl($params, min($total_page, $page + 1)); ?>" aria-label="Berikutnya">
+                            Next <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                          </a>
+                        </li>
+                        <!-- Last Page -->
+                        <li class="page-item <?php if ($page >= $total_page) echo 'disabled'; ?>">
+                          <a class="page-link" href="<?php echo pageUrl($params, $total_page); ?>" aria-label="Halaman Terakhir">
+                            Last <i class="bi bi-chevron-double-right" aria-hidden="true"></i>
+                          </a>
+                        </li>
+                      </ul>
                     </div>
-                    <ul class="pagination pagination-sm m-0 float-end">
-                      <li class="page-item <?php if ($page <= 1) echo 'disabled'; ?>">
-                        <a class="page-link" href="?<?php echo $query; ?>&page=<?php echo $page - 1; ?>" aria-label="Sebelumnya"> &laquo; </a>
-                      </li>
-                      <?php for ($i = 1; $i <= $total_page; $i++) { ?>
-                      <li class="page-item <?php if ($i == $page) echo 'active'; ?>">
-                        <a class="page-link" href="?<?php echo $query; ?>&page=<?php echo $i; ?>"><?php echo $i; ?></a>
-                      </li>
-                      <?php } ?>
-                      <li class="page-item <?php if ($page >= $total_page) echo 'disabled'; ?>">
-                        <a class="page-link" href="?<?php echo $query; ?>&page=<?php echo $page + 1; ?>" aria-label="Berikutnya"> &raquo; </a>
-                      </li>
-                    </ul>
                   </div>
                   <!--end::Card Footer-->
                 </div>
@@ -705,6 +757,17 @@
         filterDropdown.addEventListener('change', function () {
           const urlParams = new URLSearchParams(window.location.search);
           urlParams.set('predikat', this.value);
+          urlParams.delete('page'); // kembali ke halaman 1
+          window.location.href = '?' + urlParams.toString();
+        });
+      }
+
+      //limit data per halaman
+      const limitSelect = document.getElementById('limit-select');
+      if (limitSelect) {
+        limitSelect.addEventListener('change', function () {
+          const urlParams = new URLSearchParams(window.location.search);
+          urlParams.set('limit', this.value);
           urlParams.delete('page'); // kembali ke halaman 1
           window.location.href = '?' + urlParams.toString();
         });
